@@ -1,0 +1,6 @@
+*.bin
+*.sqlite3
+chroma_db/
+chroma_db/
+.venv/
+chroma_migrated/
