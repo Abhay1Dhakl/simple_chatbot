@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FAR Query Assistant</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background: #f0f2f5;
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    .chat-container {
+      max-width: 700px;
+      margin: 40px auto;
+      background: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      height: 85vh;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .chat-header {
+      background-color: #007bff;
+      color: #fff;
+      padding: 18px;
+      font-size: 20px;
+      text-align: center;
+    }
+
+    .chat-body {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1;
+      background: #fafafa;
+    }
+
+    .message {
+      display: flex;
+      align-items: flex-end;
+      margin-bottom: 16px;
+      max-width: 80%;
+    }
+
+    .message.bot {
+      flex-direction: row;
+    }
+
+    .message.user {
+      flex-direction: row-reverse;
+      align-self: flex-end;
+    }
+
+    .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      margin: 0 10px;
+      object-fit: cover;
+    }
+
+    .bubble {
+      padding: 12px 16px;
+      border-radius: 18px;
+      font-size: 15px;
+      line-height: 1.4;
+    }
+
+    .bot .bubble {
+      background: #e8f5e9;
+      color: #333;
+    }
+
+    .user .bubble {
+      background: #cce5ff;
+      color: #000;
+    }
+
+    .chat-footer {
+      display: flex;
+      border-top: 1px solid #ddd;
+      padding: 15px;
+      background: #fff;
+    }
+
+    .chat-footer input {
+      flex: 1;
+      padding: 10px 14px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 15px;
+      margin-right: 10px;
+    }
+
+    .chat-footer button {
+      padding: 10px 18px;
+      font-size: 15px;
+      border: none;
+      border-radius: 8px;
+      background-color: #007bff;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    .chat-footer button:hover {
+      background-color: #0056b3;
+    }
+
+    .typing {
+      font-style: italic;
+      font-size: 14px;
+      color: #888;
+    }
+
+    @media (max-width: 600px) {
+      .chat-container {
+        height: 95vh;
+        border-radius: 0;
+      }
+
+      .chat-footer input {
+        font-size: 14px;
+      }
+
+      .chat-footer button {
+        font-size: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="chat-container">
+  <div class="chat-header">FAR Query Assistant</div>
+  <div class="chat-body" id="chatBody"></div>
+
+  <div class="chat-footer">
+    <input type="text" id="queryInput" placeholder="Ask a question..." />
+    <button onclick="sendMessage()">Send</button>
+  </div>
+</div>
+
+<script>
+  const chatBody = document.getElementById('chatBody');
+  const input = document.getElementById('queryInput');
+
+  function appendMessage(role, text) {
+    const msg = document.createElement('div');
+    msg.className = `message ${role}`;
+
+    const avatar = document.createElement('img');
+    avatar.className = 'avatar';
+    avatar.src = role === 'user'
+      ? 'https://cdn-icons-png.flaticon.com/512/847/847969.png'
+      : 'https://cdn-icons-png.flaticon.com/512/4712/4712109.png';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = text;
+
+    msg.appendChild(avatar);
+    msg.appendChild(bubble);
+    chatBody.appendChild(msg);
+    chatBody.scrollTop = chatBody.scrollHeight;
+  }
+
+  function showTyping() {
+    const typing = document.createElement('div');
+    typing.className = 'message bot typing';
+    typing.innerHTML = `<img class="avatar" src="https://cdn-icons-png.flaticon.com/512/4712/4712109.png">
+                        <div class="bubble">Typing...</div>`;
+    typing.id = "typing";
+    chatBody.appendChild(typing);
+    chatBody.scrollTop = chatBody.scrollHeight;
+  }
+
+  function removeTyping() {
+    const typing = document.getElementById("typing");
+    if (typing) typing.remove();
+  }
+
+  async function sendMessage() {
+    const query = input.value.trim();
+    if (!query) return;
+
+    appendMessage('user', query);
+    input.value = '';
+    showTyping();
+
+    try {
+      console.log('Sending request to:', 'http://localhost:5000/query');
+      console.log('Query:', query);
+      
+      const response = await fetch('http://localhost:5000/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({query: query })
+      });
+
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
+
+      const data = await response.json();
+      console.log('Response data:', data);
+      
+      removeTyping();
+
+      if (data.response) {
+        appendMessage('bot', data.response);
+      } else {
+        appendMessage('bot', data.error || "No response.");
+      }
+    } catch (error) {
+      console.error('Error details:', error);
+      removeTyping();
+      appendMessage('bot', "Server error. Try again later. Check console for details.");
+    }
+  }
+
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") sendMessage();
+  });
+</script>
+
+</body>
+</html>

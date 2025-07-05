@@ -1,4 +1,5 @@
 chromadb
 flask
+flask-cors
 sentence_transformers
 python-dotenv

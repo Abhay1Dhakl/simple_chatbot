@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 import torch
@@ -12,7 +13,13 @@ load_dotenv()
 
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# Debug: Print environment variables (without exposing full API key)
+print(f"OPENAI_BASE_URL: {OPENAI_BASE_URL}")
+print(f"OPENAI_API_KEY: {'*' * 20 + (OPENAI_API_KEY[-4:] if OPENAI_API_KEY else 'NOT SET')}")
+
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 # # Load the LLaMA model and tokenizer
 # llama_model_name = "meta-llama/Llama-2-7b-hf" 
@@ -40,7 +47,8 @@ embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 # Initialize ChromaDB client
 try:
     client = chromadb.PersistentClient(path="chroma_db/")
-    collection = client.get_collection('laptop_embedded_data')
+    collection = client.get_collection('far_embedded_data')
+    print("Successfully connected to FAR embedded data collection")
 except Exception as e:
     print(f"Error initializing ChromaDB: {e}")
     exit(1)
@@ -77,7 +85,7 @@ def retrieve_similar_docs(query_vector, top_k=1):
 def format_context(retrieved_documents):
     """Format the retrieved documents into a context string."""
     if not retrieved_documents or "documents" not in retrieved_documents:
-        return "No relevant documents found."
+        return "No relevant FAR information found in the database."
     flat_documents = [
         doc[0] if isinstance(doc, list) and len(doc) > 0 else ""
         for doc in retrieved_documents.get('documents', [])
@@ -85,33 +93,61 @@ def format_context(retrieved_documents):
     return "\n".join(flat_documents)
 
 def query_llm_with_llama(user_query, context):
-     """Generate a response using the external API."""
-     headers = {
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-            "Content-Type": "application/json"
-        }
-     payload = {
-            "messages": [
-                {"role": "system", "content": "You are a helpful assistant. Use the provided context to answer questions.Only answer about the gadgets that are available in out vector database and if you are asked about other question that are related to gadgets then dont answer it and also if that particular gadget is not available then replay we dont have that product here. If you are asked to list the product then provide all the products that matches with the question for example if you are asked to list the iphones then list all the available iphones that are in the vector storage."},
-                {"role": "system", "content": f"Context: {context}"},
-                {"role": "user", "content": user_query}
-            ]
-        }
+    """Generate a response using the external API."""
+    if not OPENAI_API_KEY or not OPENAI_BASE_URL:
+        print("Error: OPENAI_API_KEY or OPENAI_BASE_URL not configured")
+        return "Error: API configuration missing."
+    
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": "gpt-3.5-turbo",  # Add model specification
+        "messages": [
+            {"role": "system", "content": "You are a helpful assistant specializing in Federal Acquisition Regulation (FAR) information. You have access to a comprehensive database of FAR regulations and procedures. Only provide information that is available in the FAR database. If asked about topics not covered in the FAR or if the specific information is not available in the database, clearly state that the information is not available in the FAR database. When answering questions, cite relevant FAR sections when possible and provide accurate, detailed information based solely on the FAR content provided in the context."},
+            {"role": "system", "content": f"FAR Context: {context}"},
+            {"role": "user", "content": user_query}
+        ],
+        "max_tokens": 500,
+        "temperature": 0.7
+    }
+    
+    try:
+        # Fix URL formatting - ensure it ends with /
+        api_url = OPENAI_BASE_URL
+        if not api_url.endswith('/'):
+            api_url += '/'
+        api_url += 'chat/completions'
         
-     try:
-            response = requests.post(
-                url=f"{OPENAI_BASE_URL}chat/completions",  # Adjust endpoint as per API documentation
-                headers=headers,
-                json=payload
-            )
-            response.raise_for_status()  # Raise an exception for HTTP errors
-            data = response.json()
-            # Extract the model's reply
-            reply = data.get("choices", [])[0].get("message", {}).get("content", "No response.")
+        response = requests.post(
+            url=api_url,
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+        
+        print(f"API Response Status: {response.status_code}")
+        if response.status_code != 200:
+            print(f"API Response: {response.text}")
+        
+        response.raise_for_status()
+        data = response.json()
+        
+        # Extract the model's reply
+        if "choices" in data and len(data["choices"]) > 0:
+            reply = data["choices"][0].get("message", {}).get("content", "No response.")
             return reply.strip()
-     except requests.exceptions.RequestException as e:
-            print(f"Error querying external API: {e}")
-            return "Error: Unable to generate a response."
+        else:
+            return "No response received from API."
+            
+    except requests.exceptions.RequestException as e:
+        print(f"Error querying external API: {e}")
+        return "Error: Unable to generate a response."
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        return "Error: Unexpected error occurred."
 def process_query(user_query):
     """Process the user query."""
     # Step 1: Vectorize the query
