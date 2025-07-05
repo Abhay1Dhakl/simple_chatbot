@@ -20,7 +20,7 @@ A Flask-based chatbot application that uses ChromaDB for vector storage and retr
 
 ### 1. Clone the Repository (Optional)
 ```bash
-git clone <repository-url>
+git clone https://github.com/Abhay1Dhakl/simple_chatbot.git
 cd simple_chatbot
 ```
 
